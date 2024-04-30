@@ -1,80 +1,76 @@
-use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicBool;
+
+use bincode::{Decode, Encode};
+use gloo_utils::format::JsValueSerdeExt;
+use js_sys::Array;
+use serde_json::json;
 use tokio::sync::mpsc::unbounded_channel;
-use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
+use wasm_bindgen::{prelude::Closure, JsCast};
 use web_sys::{MessageEvent, Worker, WorkerOptions, WorkerType};
 
-#[allow(dead_code)]
-pub use wasm_bindgen_rayon::init_thread_pool;
-
 pub type Callback = dyn FnMut(MessageEvent);
+pub const WORKER_GLOB: &str = r#"
+;(async () => {
+    await init();
+    postMessage('ready');
+    addEventListener('message', async event => {
+        const {task_name, message} = JSON.parse(event.data);
+        
+        const task = wasm[task_name];
+        if (!task) return console.error(`[Web Worker] Task '${task}' not found, is it exported with #[wasm_bindgen]?`);
 
-/// Generic worker.js file
-///
-/// This should be edited for more complex tasks,
-/// but provides the boilerplate needed to execute
-/// code exported by \#\[wasm_bindgen\]
-pub const WORKER_FILE: &[u8] = include_bytes!("../worker.js");
+        const result = await task(message);
+        postMessage(result);
+    });
 
-#[derive(Serialize, Deserialize)]
-struct WorkerTask<T: Serialize> {
-    task_name: String,
-    data: Option<T>,
+})();
+"#;
+
+fn glob(_rel: &str) -> String {
+    "./worker.js".to_string()
+    // web_sys::Url::create_object_url_with_blob(
+    //     &web_sys::Blob::new_with_blob_sequence_and_options(
+    //         &{
+    //             let a = Array::new();
+    //             a.push(&format!("; import init, * as wasm from '{rel}';\n{WORKER_GLOB}").into());
+    //             a.into()
+    //         },
+    //         web_sys::BlobPropertyBag::new().type_("application/javascript"),
+    //     )
+    //     .unwrap(),
+    // )
+    // .unwrap()
 }
 
-pub struct WorkerOutput(Option<JsValue>);
-impl WorkerOutput {
-    pub fn value(&self) -> &Option<JsValue> {
-        &self.0
-    }
-    pub fn deserialize<T: serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<T, serde_wasm_bindgen::Error> {
-        serde_wasm_bindgen::from_value(
-            self
-            .0
-            .as_ref()
-            .unwrap_or(&JsValue::UNDEFINED)
-            .clone()
-        )
-    }
-}
-
-impl<T: Serialize> WorkerTask<T> {
-    pub fn new(task_name: String, data: Option<T>) -> Self {
-        Self { task_name, data }
-    }
-
-    pub fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap()
-    }
-
-    pub fn to_jsvalue(&self) -> JsValue {
-        JsValue::from_str(&self.to_json())
-    }
-}
-
-pub struct WrappedWorker {
+pub struct WrappedWorker<I, O>
+where
+    I: Encode + Clone,
+    O: Decode,
+{
     worker: Worker,
-    pub open: bool,
+    working: AtomicBool,
+    _p: std::marker::PhantomData<(I, O)>,
 }
 
-impl WrappedWorker {
+impl<I, O> WrappedWorker<I, O>
+where
+    I: Encode + Clone,
+    O: Decode,
+{
     /// Create a new WrappedWorker
     ///
     /// Awaits worker ready (wasm_bindgen init)
     ///
-    /// * `path` - Path to worker.js file, see [`WORKER_FILE`]
-    pub async fn new(path: &str) -> WrappedWorker {
+    /// * `main_js` - Relative main _bg.js path
+    pub async fn new(main_js: &str) -> WrappedWorker<I, O> {
         // Create and set options for the worker
         let mut worker_options = WorkerOptions::new();
         worker_options.type_(WorkerType::Module);
 
-        // Spawn the worker
-        let worker = Worker::new_with_options(path, &worker_options).unwrap();
+        let worker = Worker::new_with_options(&glob(main_js), &worker_options).unwrap();
 
         let (sender, mut receiver) = unbounded_channel::<()>();
         let handler = Closure::<Callback>::new(move |_: MessageEvent| {
-            web_sys::console::log_1(&"[WebAssembly] Worker initialized.".into());
             let _ = sender.send(());
         });
 
@@ -82,7 +78,11 @@ impl WrappedWorker {
         handler.forget();
 
         receiver.recv().await;
-        WrappedWorker { worker, open: true }
+        WrappedWorker {
+            worker,
+            working: AtomicBool::new(false),
+            _p: std::marker::PhantomData,
+        }
     }
 
     /// Run \#\[wasm_bindgen\] function.
@@ -90,40 +90,41 @@ impl WrappedWorker {
     /// Awaits response as JsValue
     ///
     /// * `name` - Literal function name
-    /// * `data` - Serializable data to pass to the function (can be one argument)
-    pub async fn run_task(&self, name: &str, data: Option<impl Serialize>) -> WorkerOutput {
-        if !self.open {
-            panic!("Worker has been killed.")
+    /// * `data` - Serializable data to pass to the function (one argument)
+    /// * `callback` - Callback to handle the response
+    pub fn run_task(&self, name: &str, data: I, callback: impl Fn(O) + 'static) {
+        if self.working.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
         }
 
-        let task = WorkerTask::new(name.to_string(), data);
-        let message = task.to_jsvalue();
+        self.working
+            .store(true, std::sync::atomic::Ordering::Relaxed);
 
-        let (sender, mut receiver) = unbounded_channel::<JsValue>();
+        let message = bincode::encode_to_vec(data.clone(), bincode::config::standard()).unwrap();
+
+        let w = self.worker.clone();
         let handler = Closure::<Callback>::new(move |event: MessageEvent| {
-            let _ = sender.send(event.data()).unwrap();
+            w.terminate();
+            callback(
+                bincode::decode_from_slice(
+                    &Array::from(&event.data()).into_serde::<Vec<u8>>().unwrap(),
+                    bincode::config::standard(),
+                )
+                .unwrap()
+                .0,
+            );
         });
 
-        let _ = &self
-            .worker
+        self.worker
             .set_onmessage(Some(handler.as_ref().unchecked_ref()));
-        match &self.worker.post_message(&message) {
-            Err(_) => {
-                web_sys::console::log_1(&"[WebAssembly] Failed to post message to worker.".into());
-            }
-            Ok(_) => {}
-        }
+        self.worker
+            .post_message(
+                &json!({ "task_name": name, "message": message })
+                    .to_string()
+                    .into(),
+            )
+            .expect("Failed to post message");
 
         handler.forget();
-        WorkerOutput(receiver.recv().await)
-    }
-
-    /// Kill the worker
-    ///
-    /// Allows for safe initialization of a new worker as
-    /// a new worker spins up a new thread pool
-    pub fn kill(&mut self) {
-        self.worker.terminate();
-        self.open = false;
     }
 }
