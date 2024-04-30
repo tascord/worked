@@ -1,0 +1,43 @@
+[package]
+name = "wasm-workers"
+description = "A library for running WebAssembly in web workers"
+version = "0.3.0"
+edition = "2021"
+authors = ["Flora Hill"]
+repository = "https://github.com/tascord/wasm-workers"
+license = "MIT"
+keywords = ["WASM", "Workers", "WebAssembly"]
+categories = ["wasm", "web-programming", "concurrency"]
+readme = "README.md"
+homepage = "https://github.com/tascord/wasm-workers"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = { version = "0.2.84", default-features = false, features = [
+    "std",
+    "spans",
+] }
+web-sys = { version = "0.3.56", default-features = false, features = [
+    "Blob",
+    "WorkerOptions",
+    "WorkerType",
+] }
+js-sys = { version = "0.3.56", default-features = false }
+gloo = { version = "0.11.0", features = ["futures"] }
+console_error_panic_hook = { version = "0.1.7", default-features = false }
+url = { version = "2.2.2", default-features = false }
+serde_json = { version = "1.0.79", default-features = false, features = [
+    "arbitrary_precision",
+] }
+anyhow = { version = "1.0.55", default-features = false, features = ["std"] }
+tokio = { version = "1.32.0", features = ["sync", "rt"] }
+bincode = { version = "2.0.0-rc.3" }
+ww-macro = { path = "../ww-macro" }
+wasm-bindgen-futures = "0.4.42"
+gloo-utils = "0.2.0"
+
+[features]
+default = ["example"]
+example = []
