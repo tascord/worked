@@ -34,7 +34,7 @@ serde_json = { version = "1.0.79", default-features = false, features = [
 anyhow = { version = "1.0.55", default-features = false, features = ["std"] }
 tokio = { version = "1.32.0", features = ["sync", "rt"] }
 bincode = { version = "2.0.0-rc.3" }
-ww-macro = { git = "https://github.com/tascord/ww-macro" }
+ww-macro = "0.0.1"
 wasm-bindgen-futures = "0.4.42"
 gloo-utils = "0.2.0"
 

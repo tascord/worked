@@ -882,8 +882,9 @@ dependencies = [
 
 [[package]]
 name = "ww-macro"
-version = "0.1.0"
-source = "git+https://github.com/tascord/ww-macro#c603719fef4dc655fe175287207325662325529d"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "954a1e4facf4cdb2673f5e0b74b22ac1cb7e6a347f04e915b656738ebb096dab"
 dependencies = [
  "bincode 2.0.0-rc.3",
  "js-sys",
