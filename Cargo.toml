@@ -1,15 +1,15 @@
 [package]
-name = "wasm-workers"
-description = "A library for running WebAssembly in web workers"
-version = "0.3.0"
+name = "worked"
+description = "Run functions in Web Workers with ease"
+version = "0.0.1"
 edition = "2021"
 authors = ["Flora Hill"]
-repository = "https://github.com/tascord/wasm-workers"
+repository = "https://github.com/tascord/worked"
 license = "MIT"
 keywords = ["WASM", "Workers", "WebAssembly"]
 categories = ["wasm", "web-programming", "concurrency"]
 readme = "README.md"
-homepage = "https://github.com/tascord/wasm-workers"
+homepage = "https://github.com/tascord/worked"
 
 [lib]
 crate-type = ["cdylib"]
@@ -34,10 +34,10 @@ serde_json = { version = "1.0.79", default-features = false, features = [
 anyhow = { version = "1.0.55", default-features = false, features = ["std"] }
 tokio = { version = "1.32.0", features = ["sync", "rt"] }
 bincode = { version = "2.0.0-rc.3" }
-ww-macro = { path = "../ww-macro" }
+ww-macro = { git = "https://github.com/tascord/ww-macro" }
 wasm-bindgen-futures = "0.4.42"
 gloo-utils = "0.2.0"
 
 [features]
-default = ["example"]
+default = []
 example = []

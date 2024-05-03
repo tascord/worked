@@ -1,18 +1,20 @@
 use std::sync::atomic::AtomicBool;
 
 use bincode::{Decode, Encode};
-use gloo_utils::format::JsValueSerdeExt;
+use gloo_utils::{format::JsValueSerdeExt, window};
 use js_sys::Array;
 use serde_json::json;
 use tokio::sync::mpsc::unbounded_channel;
-use wasm_bindgen::{prelude::Closure, JsCast};
+use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{MessageEvent, Worker, WorkerOptions, WorkerType};
 
 pub type Callback = dyn FnMut(MessageEvent);
 pub const WORKER_GLOB: &str = r#"
-;(async () => {
-    await init();
-    postMessage('ready');
+(async () => {
+    const wasm = await import('%rel');
+    await wasm.default();
+    postMessage('ready');'
+    let window = self;
     addEventListener('message', async event => {
         const {task_name, message} = JSON.parse(event.data);
         
@@ -26,20 +28,31 @@ pub const WORKER_GLOB: &str = r#"
 })();
 "#;
 
-fn glob(_rel: &str) -> String {
-    "./worker.js".to_string()
-    // web_sys::Url::create_object_url_with_blob(
-    //     &web_sys::Blob::new_with_blob_sequence_and_options(
-    //         &{
-    //             let a = Array::new();
-    //             a.push(&format!("; import init, * as wasm from '{rel}';\n{WORKER_GLOB}").into());
-    //             a.into()
-    //         },
-    //         web_sys::BlobPropertyBag::new().type_("application/javascript"),
-    //     )
-    //     .unwrap(),
-    // )
-    // .unwrap()
+fn glob(rel: &str) -> String {
+    web_sys::Url::create_object_url_with_blob(
+        &web_sys::Blob::new_with_blob_sequence_and_options(
+            &{
+                let a = Array::new();
+                a.push(
+                    &WORKER_GLOB
+                        .replace(
+                            "%rel",
+                            &format!(
+                                "{}{}",
+                                window().location().origin().unwrap().to_string(),
+                                rel
+                            ),
+                        )
+                        .to_string()
+                        .into(),
+                );
+                a.into()
+            },
+            web_sys::BlobPropertyBag::new().type_("application/javascript"),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 
 pub struct WrappedWorker<I, O>
