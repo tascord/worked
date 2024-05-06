@@ -13,8 +13,7 @@ pub const WORKER_GLOB: &str = r#"
 (async () => {
     const wasm = await import('%rel');
     await wasm.default();
-    postMessage('ready');'
-    let window = self;
+    postMessage('ready');
     addEventListener('message', async event => {
         const {task_name, message} = JSON.parse(event.data);
         
@@ -24,7 +23,6 @@ pub const WORKER_GLOB: &str = r#"
         const result = await task(message);
         postMessage(result);
     });
-
 })();
 "#;
 
@@ -81,7 +79,6 @@ where
         worker_options.type_(WorkerType::Module);
 
         let worker = Worker::new_with_options(&glob(main_js), &worker_options).unwrap();
-
         let (sender, mut receiver) = unbounded_channel::<()>();
         let handler = Closure::<Callback>::new(move |_: MessageEvent| {
             let _ = sender.send(());
@@ -89,7 +86,6 @@ where
 
         worker.set_onmessage(Some(handler.as_ref().unchecked_ref()));
         handler.forget();
-
         receiver.recv().await;
         WrappedWorker {
             worker,

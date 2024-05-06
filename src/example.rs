@@ -12,7 +12,7 @@ pub async fn start() {
     }
 }
 
-#[worked("/pkg/wasm_workers.js")]
+#[worked("/pkg/worked.js")]
 pub fn factorial(n: i64) -> i64 {
     f(n)
 }

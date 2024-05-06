@@ -1,7 +1,7 @@
 [package]
 name = "worked"
 description = "Run functions in Web Workers with ease"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["Flora Hill"]
 repository = "https://github.com/tascord/worked"
@@ -39,5 +39,5 @@ wasm-bindgen-futures = "0.4.42"
 gloo-utils = "0.2.0"
 
 [features]
-default = []
+default = ["example"]
 example = []
